@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Jokoding Invoice</title>
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="assets/logo.png" alt="Jokoding" width="108" height="34" />
+        <span>Invoice Generator</span>
+      </div>
+      <p id="save-status" class="save-status" role="status" aria-live="polite">Draft tersimpan otomatis</p>
+      <div class="topbar-actions">
+        <button id="new-invoice" class="button ghost" type="button">Invoice baru</button>
+        <button id="save-invoice" class="button secondary" type="button">Simpan</button>
+        <button id="print-button" class="button primary" type="button">Download PDF</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="editor" aria-label="Pengaturan invoice">
+        <details id="history-panel" class="history-panel">
+          <summary>Riwayat invoice <span id="history-count" class="count-badge">0</span></summary>
+          <ul id="history-list" class="history-list"></ul>
+          <p id="history-empty" class="help-text">Belum ada invoice tersimpan. Klik "Simpan" untuk menyimpan invoice ke riwayat.</p>
+          <div class="history-tools">
+            <button id="export-history" class="text-button" type="button">Backup (.json)</button>
+            <label class="text-button file-button">Restore<input id="import-history" type="file" accept="application/json,.json" /></label>
+          </div>
+          <p class="help-text">Riwayat hanya tersimpan di browser ini. Backup rutin supaya data tidak hilang.</p>
+        </details>
+
+        <form id="invoice-form" autocomplete="off">
+          <fieldset>
+            <legend>Identitas invoice</legend>
+            <div class="field-grid two">
+              <label class="span-two">Nomor invoice
+                <span class="input-with-action">
+                  <input id="invoice-number" name="number" required />
+                  <button id="auto-number" class="mini-button" type="button" title="Isi nomor berikutnya otomatis">Otomatis</button>
+                </span>
+              </label>
+              <label>Tanggal invoice<input id="invoice-date" name="date" type="date" required /></label>
+              <label>Jatuh tempo<input id="due-date" name="dueDate" type="date" required /></label>
+              <label class="span-two">Nama klien<input id="client-name" name="client" placeholder="Contoh: Dovi Pratama Dion" /></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Item pekerjaan</legend>
+            <div id="item-fields" class="item-fields"></div>
+            <button id="add-item" class="text-button" type="button">+ Tambah item</button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Diskon &amp; pembayaran</legend>
+            <div class="field-grid two">
+              <label>Diskon
+                <span class="input-with-action">
+                  <input id="discount-value" name="discountValue" type="number" min="0" step="any" placeholder="0" />
+                  <select id="discount-type" name="discountType" class="mini-select" aria-label="Jenis diskon">
+                    <option value="percent">%</option>
+                    <option value="amount">Nominal</option>
+                  </select>
+                </span>
+              </label>
+              <label>Uang muka (%)<input id="deposit-percent" name="depositPercent" type="number" min="0" max="100" /></label>
+              <label>Mata uang<select id="currency" name="currency"><option value="IDR">Rupiah (IDR)</option><option value="USD">US Dollar (USD)</option></select></label>
+              <label>Nama bank<input id="bank-name" name="bankName" placeholder="Contoh: BCA" /></label>
+              <label>Nomor rekening<input id="account-number" name="accountNumber" inputmode="numeric" placeholder="Contoh: 1234567890" /></label>
+              <label>Nama pemegang rekening<input id="account-holder" name="accountHolder" placeholder="Contoh: Irfan Qobus" /></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Status &amp; catatan</legend>
+            <label class="check-row"><input id="paid" name="paid" type="checkbox" /><span>Tandai <strong>LUNAS</strong> (stempel PAID di invoice)</span></label>
+            <label class="notes-field">Catatan untuk klien (opsional)<textarea id="notes" name="notes" rows="3" placeholder="Contoh: Termasuk revisi 2x dan maintenance 1 bulan."></textarea></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Logo &amp; tanda tangan</legend>
+            <div class="field-grid two">
+              <label>Ganti logo sementara<input id="logo-upload" type="file" accept="image/*" /></label>
+              <label>Ganti tanda tangan sementara<input id="signature-upload" type="file" accept="image/*" /></label>
+            </div>
+            <p class="help-text">Default dibaca dari <code>assets/logo.png</code> dan <code>assets/signature.png</code>. Gunakan PNG transparan. File upload di sini hanya berlaku sampai halaman ditutup.</p>
+          </fieldset>
+        </form>
+      </section>
+
+      <section class="preview-panel" aria-label="Pratinjau invoice">
+        <div id="sheet-frame" class="sheet-frame">
+          <article id="invoice" class="invoice-sheet">
+            <header class="invoice-header">
+              <h2>INVOICE</h2>
+              <div class="brand-lockup">
+                <img id="logo-image" alt="Jokoding" data-default="assets/logo.png" hidden />
+                <div id="logo-placeholder" class="brand-wordmark"><span>joko</span>ding</div>
+              </div>
+            </header>
+
+            <section class="invoice-meta">
+              <div class="bill-to"><strong>Bill to</strong><span id="preview-client">Nama klien</span></div>
+              <dl>
+                <div><dt>Date</dt><dd id="preview-date"></dd></div>
+                <div><dt>Number</dt><dd id="preview-number"></dd></div>
+              </dl>
+            </section>
+
+            <p class="issued-by"><strong>Issued by</strong> Jokoding</p>
+
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>No.</th><th>Item</th><th>Quantity</th><th>Individual Price</th><th>Amount</th></tr></thead>
+                <tbody id="preview-items"></tbody>
+                <tfoot>
+                  <tr id="row-subtotal" class="minor" hidden><th colspan="4">Subtotal</th><td id="preview-subtotal"></td></tr>
+                  <tr id="row-discount" class="minor" hidden><th colspan="4" id="preview-discount-label">Discount</th><td id="preview-discount"></td></tr>
+                  <tr><th colspan="4">Total</th><td id="preview-total"></td></tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <section class="payment-terms">
+              <h3>Payment Term</h3>
+              <ol>
+                <li>A down payment of <strong id="preview-deposit-percent"></strong> of the total project cost, which is <strong id="preview-deposit-amount"></strong>, is due before <strong id="preview-due-month"></strong>. This payment will be considered as confirmation of the project and will initiate the work.</li>
+                <li>The remaining <strong id="preview-remaining-percent"></strong> of the total project cost, which is <strong id="preview-remaining-amount"></strong>, must be paid before the end of the project, which is on <strong id="preview-due-date"></strong>. Failure to make the final payment by the deadline may result in additional fees or delays in project delivery.</li>
+              </ol>
+            </section>
+
+            <section class="bank-details">
+              <p>Please make all payments to the following account:</p>
+              <dl>
+                <div><dt>Bank</dt><dd id="preview-bank"></dd></div>
+                <div><dt>Account No.</dt><dd id="preview-account"></dd></div>
+                <div><dt>Account Holder</dt><dd id="preview-holder"></dd></div>
+              </dl>
+            </section>
+
+            <section id="notes-block" class="notes-block" hidden>
+              <h3>Notes</h3>
+              <p id="preview-notes"></p>
+            </section>
+
+            <p class="thank-you">Thank you for trusting us to develop your technology-related project.</p>
+            <section class="signature-block">
+              <strong>Best regards,</strong>
+              <div class="signature-box"><img id="signature-image" alt="Tanda tangan Irfan Qobus" data-default="assets/signature.png" hidden /></div>
+              <strong>Irfan Qobus</strong>
+              <span>Founder &amp; CEO of Jokoding</span>
+              <div id="paid-stamp" class="paid-stamp" hidden>PAID</div>
+            </section>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
