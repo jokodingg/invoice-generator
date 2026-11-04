@@ -1,0 +1,24 @@
+# Template: deploy/install.sh fills in __NODE__, __APP_DIR__ and __PORT__.
+[Unit]
+Description=Jokoding Invoice API
+After=network.target
+
+[Service]
+ExecStart=__NODE__ __APP_DIR__/server/main.mjs
+Environment=HOST=127.0.0.1
+Environment=PORT=__PORT__
+Environment=DATA_DIR=/var/lib/jokoding-invoice
+# Runs as a throwaway system user that can write only to /var/lib/jokoding-invoice.
+DynamicUser=yes
+StateDirectory=jokoding-invoice
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target

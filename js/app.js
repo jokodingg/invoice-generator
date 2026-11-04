@@ -1,9 +1,11 @@
 import { calcTotals, nextInvoiceNumber } from "./calc.js";
 import { invoicePdfTitle } from "./filename.js";
+import { createApi, recordsToMigrate } from "./store.js";
 
 const $ = (id) => document.getElementById(id);
 const DRAFT_KEY = "jkd-invoice:draft";
 const HISTORY_KEY = "jkd-invoice:history";
+const LEGACY_HISTORY_KEY = "jkd-invoice:history-migrated";
 const SHEET_WIDTH = 794;
 
 const form = $("invoice-form");
@@ -29,11 +31,62 @@ function writeJSON(key, value) {
   }
 }
 
-const loadHistory = () => {
+function removeKey(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // storage blocked: nothing to remove
+  }
+}
+
+function readLocalHistory() {
   const list = readJSON(HISTORY_KEY, []);
   return Array.isArray(list) ? list.filter(isInvoiceRecord) : [];
-};
-const saveHistory = (list) => writeJSON(HISTORY_KEY, list);
+}
+
+// History lives on the VPS when its API answers ("server"), else in this browser ("local").
+// `history` is the in-memory copy that the UI reads.
+const api = createApi();
+let storageMode = "local";
+let history = [];
+const loadHistory = () => history;
+
+// Saves `next` as the new history: through `serverCall` in server mode, in localStorage otherwise.
+async function commitHistory(next, serverCall) {
+  if (storageMode === "server") await serverCall();
+  else if (!writeJSON(HISTORY_KEY, next)) throw new Error("penyimpanan browser penuh atau diblokir");
+  history = next;
+}
+
+async function initHistory() {
+  const local = readLocalHistory();
+  try {
+    const remote = (await api.list()).filter(isInvoiceRecord);
+    const pending = recordsToMigrate(local, remote);
+    if (pending.length) await api.importMany(pending);
+    storageMode = "server";
+    history = [...pending, ...remote];
+    // Keep a copy of the old browser history, but stop using it.
+    if (local.length && writeJSON(LEGACY_HISTORY_KEY, local)) removeKey(HISTORY_KEY);
+    if (pending.length) setStatus(`${pending.length} invoice dari browser dipindah ke server`, "ok");
+  } catch {
+    storageMode = "local";
+    history = local;
+  }
+  $("history-note").textContent = storageMode === "server"
+    ? "Riwayat tersimpan di server, sama di semua perangkat."
+    : "Server tidak terhubung: riwayat hanya tersimpan di browser ini. Backup rutin supaya data tidak hilang.";
+}
+
+async function refreshHistory() {
+  if (storageMode !== "server") return;
+  try {
+    history = (await api.list()).filter(isInvoiceRecord);
+    renderHistory();
+  } catch {
+    // keep showing the last list; the next save reports any real problem
+  }
+}
 
 function isInvoiceRecord(value) {
   return value && typeof value === "object" && typeof value.id === "string" && Array.isArray(value.items);
@@ -252,16 +305,18 @@ function onChange() {
 
 // ---------- history ----------
 
-function saveCurrent() {
+async function saveCurrent() {
   if (!form.reportValidity()) return;
   const invoice = { ...readForm(), savedAt: new Date().toISOString() };
-  const history = loadHistory();
   const clash = history.find((record) => record.number === invoice.number && record.id !== invoice.id);
   if (clash && !confirm(`Nomor ${invoice.number} sudah dipakai invoice lain (${clash.client || "tanpa nama"}). Tetap simpan?`)) return;
-  const index = history.findIndex((record) => record.id === invoice.id);
-  if (index >= 0) history[index] = invoice;
-  else history.unshift(invoice);
-  if (!saveHistory(history)) return setStatus("Gagal menyimpan: penyimpanan browser penuh atau diblokir", "warn");
+  const next = [invoice, ...history.filter((record) => record.id !== invoice.id)];
+  setStatus("Menyimpan…");
+  try {
+    await commitHistory(next, () => api.put(invoice));
+  } catch (error) {
+    return setStatus(`Gagal menyimpan: ${error.message}`, "warn");
+  }
   current = invoice;
   writeJSON(DRAFT_KEY, invoice);
   renderHistory();
@@ -269,10 +324,10 @@ function saveCurrent() {
 }
 
 function renderHistory() {
-  const history = loadHistory().sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
-  $("history-count").textContent = history.length;
-  $("history-empty").hidden = history.length > 0;
-  const items = history.map((record) => {
+  const sorted = [...history].sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+  $("history-count").textContent = sorted.length;
+  $("history-empty").hidden = sorted.length > 0;
+  const items = sorted.map((record) => {
     const li = document.createElement("li");
     li.className = "history-item";
     if (current && record.id === current.id) li.classList.add("active");
@@ -320,9 +375,13 @@ function duplicate(record) {
   setStatus(`Duplikat dibuat: ${fresh.number} (belum disimpan)`, "ok");
 }
 
-function removeRecord(record) {
+async function removeRecord(record) {
   if (!confirm(`Hapus invoice ${record.number} dari riwayat? Tindakan ini tidak bisa dibatalkan.`)) return;
-  saveHistory(loadHistory().filter((item) => item.id !== record.id));
+  try {
+    await commitHistory(history.filter((item) => item.id !== record.id), () => api.remove(record.id));
+  } catch (error) {
+    return setStatus(`Gagal menghapus: ${error.message}`, "warn");
+  }
   renderHistory();
   setStatus(`Dihapus: ${record.number}`, "ok");
 }
@@ -340,18 +399,23 @@ async function importHistory(event) {
   const file = event.target.files[0];
   event.target.value = "";
   if (!file) return;
+  let valid;
   try {
     const incoming = JSON.parse(await file.text());
     if (!Array.isArray(incoming)) throw new Error("bukan daftar invoice");
-    const valid = incoming.filter(isInvoiceRecord);
-    const merged = new Map(loadHistory().map((record) => [record.id, record]));
-    valid.forEach((record) => merged.set(record.id, record));
-    saveHistory([...merged.values()]);
-    renderHistory();
-    setStatus(`Restore selesai: ${valid.length} invoice`, "ok");
+    valid = incoming.filter(isInvoiceRecord);
   } catch (error) {
-    setStatus(`File backup tidak valid (${error.message})`, "warn");
+    return setStatus(`File backup tidak valid (${error.message})`, "warn");
   }
+  const merged = new Map(history.map((record) => [record.id, record]));
+  valid.forEach((record) => merged.set(record.id, record));
+  try {
+    await commitHistory([...merged.values()], () => api.importMany(valid));
+  } catch (error) {
+    return setStatus(`Gagal restore: ${error.message}`, "warn");
+  }
+  renderHistory();
+  setStatus(`Restore selesai: ${valid.length} invoice`, "ok");
 }
 
 // ---------- images ----------
@@ -404,6 +468,11 @@ document.fonts?.ready.then(fitSheet);
 setupImage("logo-image", "logo-placeholder");
 setupImage("signature-image");
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshHistory();
+});
+
+await initHistory();
 const draft = readJSON(DRAFT_KEY, null);
 fillForm(isInvoiceRecord(draft) ? draft : blankInvoice());
 renderHistory();
