@@ -51,6 +51,7 @@
               <label>Tanggal invoice<input id="invoice-date" name="date" type="date" required /></label>
               <label>Jatuh tempo<input id="due-date" name="dueDate" type="date" required /></label>
               <label class="span-two">Nama klien<input id="client-name" name="client" placeholder="Contoh: Dovi Pratama Dion" /></label>
+              <label class="span-two">No. telp klien<input id="client-phone" name="clientPhone" type="tel" inputmode="tel" placeholder="Contoh: 0812 3456 7890" /></label>
             </div>
           </fieldset>
 
@@ -100,7 +101,7 @@
             </header>
 
             <section class="invoice-meta">
-              <div class="bill-to"><strong>Bill to</strong><span id="preview-client">Nama klien</span></div>
+              <div class="bill-to"><strong>Bill to</strong><span id="preview-client">Nama klien</span><span id="preview-client-phone" hidden></span></div>
               <dl>
                 <div><dt>Date</dt><dd id="preview-date"></dd></div>
                 <div><dt>Number</dt><dd id="preview-number"></dd></div>

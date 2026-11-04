@@ -62,6 +62,7 @@ function blankInvoice(base = {}) {
     date: isoDate(today),
     dueDate: isoDate(addDays(today, 14)),
     client: "",
+    clientPhone: "",
     items: [{ name: "", quantity: 1, price: "" }],
     discountType: "percent",
     discountValue: "",
@@ -89,6 +90,7 @@ function readForm() {
     date: $("invoice-date").value,
     dueDate: $("due-date").value,
     client: $("client-name").value,
+    clientPhone: $("client-phone").value,
     items,
     discountType: $("discount-type").value,
     discountValue: $("discount-value").value,
@@ -108,6 +110,7 @@ function fillForm(invoice) {
   $("invoice-date").value = invoice.date ?? "";
   $("due-date").value = invoice.dueDate ?? "";
   $("client-name").value = invoice.client ?? "";
+  $("client-phone").value = invoice.clientPhone ?? "";
   $("discount-type").value = invoice.discountType === "amount" ? "amount" : "percent";
   $("discount-value").value = invoice.discountValue ?? "";
   $("deposit-percent").value = invoice.depositPercent ?? 50;
@@ -197,6 +200,9 @@ function render() {
 
   const dueDate = parseDate(invoice.dueDate);
   setText("preview-client", invoice.client, "Nama klien");
+  const clientPhone = (invoice.clientPhone ?? "").trim();
+  $("preview-client-phone").hidden = !clientPhone;
+  $("preview-client-phone").textContent = clientPhone;
   setText("preview-number", invoice.number);
   $("preview-date").textContent = longDate(parseDate(invoice.date));
   $("preview-due-date").textContent = longDate(dueDate).toUpperCase();
