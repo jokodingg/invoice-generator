@@ -1,4 +1,5 @@
 import { calcTotals, nextInvoiceNumber } from "./calc.js";
+import { invoicePdfTitle } from "./filename.js";
 
 const $ = (id) => document.getElementById(id);
 const DRAFT_KEY = "jkd-invoice:draft";
@@ -356,23 +357,13 @@ function setupImage(imageId, placeholderId) {
   image.src = image.dataset.default; // set after listeners so a fast failure is never missed
 }
 
-function setupUpload(inputId, imageId) {
-  $(inputId).addEventListener("change", (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { $(imageId).src = reader.result; };
-    reader.readAsDataURL(file);
-  });
-}
-
 // ---------- print ----------
 
 function printInvoice() {
   if (!form.reportValidity()) return;
   const invoice = readForm();
   const previousTitle = document.title;
-  document.title = ["Invoice", invoice.number, invoice.client].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]/g, "-");
+  document.title = invoicePdfTitle(invoice.client, invoice.date);
   window.addEventListener("afterprint", () => { document.title = previousTitle; }, { once: true });
   window.print();
 }
@@ -406,8 +397,6 @@ document.fonts?.ready.then(fitSheet);
 
 setupImage("logo-image", "logo-placeholder");
 setupImage("signature-image");
-setupUpload("logo-upload", "logo-image");
-setupUpload("signature-upload", "signature-image");
 
 const draft = readJSON(DRAFT_KEY, null);
 fillForm(isInvoiceRecord(draft) ? draft : blankInvoice());
